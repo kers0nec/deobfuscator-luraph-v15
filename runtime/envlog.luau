@@ -1028,6 +1028,27 @@ local WORKSPACEP -- the workspace proxy
 local urls = {}
 local remotes = {}
 
+-- __CONFIG.http_cache maps a URL to the body recorded outside the sandbox.
+-- Exact matches win; a trailing slash is ignored, and a long prefix match
+-- covers URLs the loader builds with extra query parameters.
+local function httpCached(url)
+	if R.type(url) ~= "string" then return nil end
+	local cache = CFG.http_cache
+	if R.type(cache) ~= "table" then return nil end
+	local hit = cache[url]
+	if hit ~= nil then return hit end
+	if R.sub(url, -1) == "/" then
+		hit = cache[R.sub(url, 1, #url - 1)]
+		if hit ~= nil then return hit end
+	end
+	for k, v in R.pairs(cache) do
+		if R.type(k) == "string" and #k >= 12 and #url >= #k and R.sub(url, 1, #k) == k then
+			return v
+		end
+	end
+	return nil
+end
+
 local function methodName(info)
 	if info.kind == "index" and R.type(info.key) == "string" then return info.key end
 	return nil
@@ -1537,6 +1558,16 @@ local function onCall(p, ...)
 	if name == "HttpGet" or name == "HttpGetAsync" or name == "HttpPost" or name == "HttpPostAsync"
 		or name == "GetAsync" or name == "PostAsync" or name == "RequestAsync" then
 		if R.type(a1) == "string" then remember(urls, a1) end
+		-- __CONFIG.http_cache: responses recorded outside the sandbox (the
+		-- deobfuscator fetches a loader chain for us). The script then receives
+		-- the real body instead of a stand-in, decrypts it itself, and every
+		-- loadstring() of the result is captured like any other chunk.
+		local cached = httpCached(a1)
+		if cached ~= nil then
+			emit({ text = calleeText .. "(" .. fmtArgs(R.unpack(args, 1, args.n)) .. ")" })
+			comment("http: served " .. #cached .. " recorded bytes for " .. R.tostring(a1))
+			return cached
+		end
 		return callP(calleeText .. "(" .. fmtArgs(R.unpack(args, 1, args.n)) .. ")", "response", "string")
 	end
 
@@ -2371,6 +2402,10 @@ end
 -- driver, which instruments them like the main script and passes the result
 -- back in __CHUNKS for the next run (keyed by length and a cheap hash).
 local NEWCHUNKS = {}
+-- __CONFIG.chunk_min: report loadstring'd chunks from this size on (default
+-- 4096). The deobfuscator lowers it while following a KeyForge-style delivery
+-- chain so the payload the loader decrypts is captured whatever its size.
+local CHUNK_MIN = CFG.chunk_min or 4096
 local function srcKey(src)
 	local h = 0
 	for i = 1, #src, 4096 do
@@ -2384,7 +2419,7 @@ E.loadstring = function(src, chunkname)
 		return exprP("loadstring(" .. tok(src) .. ")", "function")
 	end
 	local patched = nil
-	if R.type(src) == "string" and #src >= 4096 then
+	if R.type(src) == "string" and #src >= CHUNK_MIN then
 		local key = srcKey(src)
 		patched = __CHUNKS and __CHUNKS[key]
 		if not patched and not NEWCHUNKS[key] then

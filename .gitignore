@@ -16,3 +16,13 @@ Thumbs.db
 # Deobfuscator output directory
 output/*
 !output/.gitkeep
+
+# Deobfuscator outputs regenerated next to the samples
+samples/*/output/
+*.hash
+
+# Luau binaries (downloaded automatically; platform-specific)
+bin/luau
+bin/luau-ast
+bin/luau.exe
+bin/luau-ast.exe

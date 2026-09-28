@@ -1,0 +1,6 @@
+{
+  "https://www.keyforge.win/v1/load/PROJTEST1": "keyforge_delivery.lua",
+  "https://cdn.example-keyforge.test/payload.enc": "payload_plain.enc",
+  "https://cdn-luraph.example-keyforge.test/payload.enc": "payload_luraph.enc",
+  "https://www.keyforge.win/v1/load/PROJTEST2": "keyforge_delivery_luraph.lua"
+}
