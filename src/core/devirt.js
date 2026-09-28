@@ -7,7 +7,7 @@ const { getPythonBin } = require('./pyenv');
 
 const HERE = __dirname;
 const BRIDGE_PATH = path.join(HERE, 'devirt_bridge.py');
-const CORE_DIR = path.join(HERE, '..', 'core');
+const CORE_DIR = path.join(HERE, '..', '..', 'core');
 
 function runBridge(cmd, args) {
   const pythonBin = getPythonBin();

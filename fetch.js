@@ -142,21 +142,54 @@ async function fetchJnkieChain(loaderCode) {
   return payload.body;
 }
 
+// KeyForge (keyforge.win) delivery chains, the same shape as the JNKIE one:
+// the pasted loader points at /v1/load/{projectId}; the protected payload sits
+// behind a key-checked follow-up request. Follow it and save the payload.
+async function fetchKeyForgeChain(loaderCode, key) {
+  const url = /https?:\/\/(?:www\.)?keyforge\.win\/v1\/load\/[A-Za-z0-9_\-]+/.exec(loaderCode);
+  const sdk = /keyforge\.win\/sdk\/client\.lua/.test(loaderCode);
+  if (!url && !sdk) return null;
+  if (!url) {
+    console.error('[!] this is a KeyForge SDK integration (custom GUI); point fetch.js at the loader URL directly');
+    return null;
+  }
+
+  const keyforge = require('./src/families/keyforge');
+  console.log(`[*] KeyForge delivery chain detected: ${url[0]}`);
+  if (!key) console.log('[!] no key given (--key or KEYFORGE_KEY); the chain may answer with an error');
+
+  const res = await keyforge.resolve({
+    source: loaderCode,
+    args: { timeout: 90, chainRounds: 6, key: key || null, httpMap: null },
+  });
+
+  if (!res.ok) {
+    console.error(`[!] KeyForge chain not resolved: ${res.reason || 'no payload'}`);
+    if (!key) console.error('    pass the script key with --key <KEY>');
+    return null;
+  }
+  console.log(`[+] KeyForge payload received: ${res.payload.length} bytes (${res.kind})`);
+  return res.payload;
+}
+
 async function main() {
   const args = process.argv.slice(2);
   let targetUrl = null;
   let outputPath = null;
+  let scriptKey = process.env.KEYFORGE_KEY || process.env.KEYFORGE_SCRIPT_KEY || null;
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '-o' || args[i] === '--output') {
       outputPath = args[++i];
+    } else if (args[i] === '--key' || args[i] === '--script-key') {
+      scriptKey = args[++i];
     } else if (!args[i].startsWith('-')) {
       targetUrl = args[i];
     }
   }
 
   if (!targetUrl) {
-    console.error('Usage: node fetch.js <url> [-o <output.lua>]');
+    console.error('Usage: node fetch.js <url> [-o <output.lua>] [--key <KEYFORGE_KEY>]');
     process.exit(1);
   }
 
@@ -179,6 +212,18 @@ async function main() {
       ? outputPath.replace(/\.lua$/, '_payload.lua')
       : path.join(__dirname, 'output', 'jnkie_payload.lua');
     fs.mkdirSync(path.dirname(payloadPath), { recursive: true });
+    fs.writeFileSync(payloadPath, finalScript, 'latin1');
+    console.log(`[+] Payload saved to: ${payloadPath}`);
+    outputPath = payloadPath;
+  }
+
+  const keyforgePayload = await fetchKeyForgeChain(res.body, scriptKey);
+  if (keyforgePayload) {
+    finalScript = keyforgePayload;
+    const payloadPath = outputPath && !outputPath.endsWith('_payload.lua')
+      ? outputPath
+      : path.join(__dirname, 'output', 'keyforge_payload.lua');
+    fs.mkdirSync(path.dirname(path.resolve(payloadPath)), { recursive: true });
     fs.writeFileSync(payloadPath, finalScript, 'latin1');
     console.log(`[+] Payload saved to: ${payloadPath}`);
     outputPath = payloadPath;

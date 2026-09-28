@@ -12,7 +12,15 @@ import zipfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 BIN = os.path.join(HERE, "..", "bin") if os.path.exists(os.path.join(HERE, "..", "bin")) else os.path.join(HERE, "bin")
 RUNTIME_DIR = os.path.join(HERE, "..", "runtime") if os.path.exists(os.path.join(HERE, "..", "runtime")) else HERE
-LUAU_URL = "https://github.com/luau-lang/luau/releases/latest/download/luau-windows.zip"
+LUAU_URLS = {
+    "nt": "https://github.com/luau-lang/luau/releases/latest/download/luau-windows.zip",
+    "posix": "https://github.com/luau-lang/luau/releases/latest/download/luau-ubuntu.zip",
+}
+
+def luau_release_url():
+    if os.name == "nt":
+        return LUAU_URLS["nt"]
+    return LUAU_URLS.get(sys.platform) or LUAU_URLS["posix"]
 
 def find_luau():
     exe = "luau.exe" if os.name == "nt" else "luau"
@@ -23,19 +31,22 @@ def find_luau():
         p = os.path.join(d, exe)
         if os.path.exists(p):
             return p
-    if os.name != "nt":
-        sys.exit("luau not found: build it with `python deobf/build_luau.py` (needs git, cmake, a C++ "
-                 "compiler) or put one in " + BIN)
-    print("[*] downloading Luau runtime...", file=sys.stderr)
-    print("[!] stock Luau lacks the Vector3 members (v:Dot, v.Magnitude, ...): build the patched "
-          "runtime with `python deobf/build_luau.py`", file=sys.stderr)
+    print("[*] luau runtime not found; downloading the official release...", file=sys.stderr)
     os.makedirs(BIN, exist_ok=True)
+    names = ("luau.exe", "luau-ast.exe") if os.name == "nt" else ("luau", "luau-ast")
     zpath = os.path.join(BIN, "luau.zip")
-    urllib.request.urlretrieve(LUAU_URL, zpath)
-    with zipfile.ZipFile(zpath) as z:
-        for name in ("luau.exe", "luau-ast.exe"):
-            z.extract(name, BIN)
-    os.remove(zpath)
+    try:
+        urllib.request.urlretrieve(luau_release_url(), zpath)
+        with zipfile.ZipFile(zpath) as z:
+            for name in names:
+                z.extract(name, BIN)
+        os.remove(zpath)
+        os.chmod(local, 0o755)
+    except Exception as e:  # noqa: BLE001 - any failure means "no runtime"
+        sys.exit("luau not found and the download failed (%s).\n    Put a luau binary (plus "
+                 "luau-ast) in %s, or install one on your PATH." % (e, BIN))
+    print("[!] stock Luau lacks some Vector3 members: for those scripts build a patched runtime",
+          file=sys.stderr)
     return local
 
 def luau_ast():
@@ -50,13 +61,20 @@ def long_string(s):
 
     return "[" + eq + "[\n" + s + "]" + eq + "]"
 
+def lua_string(s):
+    return '"' + (s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+                  .replace("\r", "\\r").replace("\t", "\\t")) + '"'
+
 def lua_value(v):
     if isinstance(v, bool):
         return "true" if v else "false"
     if isinstance(v, (list, tuple)):
         return "{" + ", ".join(lua_value(x) for x in v) + "}"
+    if isinstance(v, dict):
+        # string-keyed tables (http_cache and friends) keep their keys
+        return "{" + ", ".join("[%s] = %s" % (lua_string(str(k)), lua_value(x)) for k, x in v.items()) + "}"
     if isinstance(v, str):
-        return '"' + v.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n").replace("\r", "\\r") + '"'
+        return lua_string(v)
     return str(v)
 
 def parse_cfg_value(v):

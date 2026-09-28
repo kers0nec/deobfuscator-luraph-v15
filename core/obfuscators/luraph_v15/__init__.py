@@ -3,7 +3,11 @@ import sys
 
 from obfuscators.base import Obfuscator
 
-HEADER = re.compile(r"This file was protected using Luraph Obfuscator v(\d+)(?:\.(\d+))?")
+# Two header generations: v14+ says "protected using", v10-v13 says
+# "generated using ... by memcorrupt". Both are matched here.
+HEADER = re.compile(
+    r"This file was (?:protected|generated) using Luraph Obfuscator v(\d+)(?:\.(\d+))?(?:\.(\d+))?"
+)
 HEADER_LINE = re.compile(r"\s*--[ \t]*This file was protected using Luraph Obfuscator v[\d.]+[ \t]*"
                          r"\[https?://lura\.ph/?\]")
 
@@ -13,15 +17,25 @@ class LuraphV15(Obfuscator):
     doc = "LURAPH.md"
 
     def detect(self, source):
+        """Any Luraph generation is recognised; `version` says which one, and
+        the driver picks full devirtualization (v15) or the behaviour trace
+        (older builds, whose VM layout the lifter does not model)."""
         m = HEADER.search(source[:500])
         if m:
-            return 1.0 if m.group(1) == "15" else 0.3     
+            self.version = ".".join(g for g in m.groups() if g)
+            self.major = m.group(1)
+            return 1.0 if m.group(1) == "15" else 0.97
 
         head = source.lstrip()[:2000]
         if head.startswith("return setmetatable({") and (
                 re.search(r"\[\d+\]=(bit32|buffer|string|table|math)\.\w+", head) or "LPH" in source[:200000]):
+            self.version, self.major = None, "15"
             return 0.8
+        self.version = self.major = None
         return 0.0
+
+    version = None
+    major = None
 
     def add_arguments(self, ap):
         g = ap.add_argument_group("Luraph v15")

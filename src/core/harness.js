@@ -7,8 +7,16 @@ const https = require('https');
 const http = require('http');
 
 const HERE = __dirname;
-const BIN = path.join(HERE, '..', 'bin');
-const LUAU_URL = 'https://github.com/luau-lang/luau/releases/latest/download/luau-windows.zip';
+const BIN = path.join(HERE, '..', '..', 'bin');
+const LUAU_WINDOWS = 'https://github.com/luau-lang/luau/releases/latest/download/luau-windows.zip';
+const LUAU_UBUNTU = 'https://github.com/luau-lang/luau/releases/latest/download/luau-ubuntu.zip';
+const LUAU_MACOS = 'https://github.com/luau-lang/luau/releases/latest/download/luau-macos.zip';
+
+function luauReleaseUrl() {
+  if (process.platform === 'win32') return LUAU_WINDOWS;
+  if (process.platform === 'darwin') return LUAU_MACOS;
+  return LUAU_UBUNTU;
+}
 
 const HEARTBEAT = 2;
 const STALL = 20;
@@ -24,16 +32,21 @@ function findLuau() {
     const p = path.join(d, exe);
     if (fs.existsSync(p)) { _luauExe = p; return p; }
   }
-  if (process.platform !== 'win32') {
-    throw new Error('luau not found: build it with build_luau.py or put it in ' + BIN);
-  }
-  process.stderr.write('[*] downloading Luau runtime...\n');
-  process.stderr.write('[!] stock Luau lacks Vector3 members: build the patched runtime with build_luau.py\n');
+  process.stderr.write('[*] luau runtime not found; downloading the official release...\n');
   fs.mkdirSync(BIN, { recursive: true });
   const zipPath = path.join(BIN, 'luau.zip');
-  _downloadSync(LUAU_URL, zipPath);
-  _extractZip(zipPath, BIN, ['luau.exe', 'luau-ast.exe']);
-  fs.unlinkSync(zipPath);
+  try {
+    _downloadSync(luauReleaseUrl(), zipPath);
+    _extractZip(zipPath, BIN, process.platform === 'win32' ? ['luau.exe', 'luau-ast.exe'] : ['luau', 'luau-ast']);
+    fs.unlinkSync(zipPath);
+    fs.chmodSync(local, 0o755);
+  } catch (e) {
+    throw new Error(
+      `luau not found and the download failed (${e.message || e}).\n` +
+      `    Put a luau binary (plus luau-ast) in ${BIN}, or install one on your PATH.`
+    );
+  }
+  process.stderr.write('[!] stock Luau lacks some Vector3 members: for those scripts build the patched runtime\n');
   _luauExe = local;
   return local;
 }
@@ -68,11 +81,19 @@ function longString(s) {
   return '[' + eq + '[\n' + s + ']' + eq + ']';
 }
 
+function luaString(s) {
+  return '"' + s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+    .replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t') + '"';
+}
+
 function luaValue(v) {
   if (typeof v === 'boolean') return v ? 'true' : 'false';
   if (Array.isArray(v)) return '{' + v.map(luaValue).join(', ') + '}';
-  if (typeof v === 'string')
-    return '"' + v.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '\\r') + '"';
+  if (v && typeof v === 'object') {
+    // string-keyed tables (http_cache and friends) keep their keys
+    return '{' + Object.entries(v).map(([k, x]) => `[${luaString(String(k))}] = ${luaValue(x)}`).join(', ') + '}';
+  }
+  if (typeof v === 'string') return luaString(v);
   if (v === null || v === undefined) return 'nil';
   return String(v);
 }
@@ -121,12 +142,12 @@ function p2dMiss(body, cachePath) {
 }
 
 function buildHarness(source, cfg, chunks = {}) {
-  const runtimeFile = path.join(HERE, '..', 'runtime', 'envlog.luau');
+  const runtimeFile = path.join(HERE, '..', '..', 'runtime', 'envlog.luau');
   let runtime = fs.readFileSync(runtimeFile, 'utf8').replace('--!nocheck', '');
 
-  const unicodeFile = path.join(HERE, '..', 'runtime', 'unicode_data.luau');
-  const robloxFile = path.join(HERE, '..', 'runtime', 'roblox_api.luau');
-  const dtypesFile = path.join(HERE, '..', 'runtime', 'datatypes.luau');
+  const unicodeFile = path.join(HERE, '..', '..', 'runtime', 'unicode_data.luau');
+  const robloxFile = path.join(HERE, '..', '..', 'runtime', 'roblox_api.luau');
+  const dtypesFile = path.join(HERE, '..', '..', 'runtime', 'datatypes.luau');
 
   const udata = fs.existsSync(unicodeFile) ? fs.readFileSync(unicodeFile, 'ascii').replace('--!nocheck', '') : '';
   const rdata = fs.existsSync(robloxFile) ? fs.readFileSync(robloxFile, 'ascii').replace('--!nocheck', '') : '';

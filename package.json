@@ -1,17 +1,34 @@
 {
-  "name": "luraphv15-node",
-  "version": "1.0.0",
-  "description": "Luraph v15 deobfuscator - Node.js port",
+  "name": "deobfuscator-luraph-keyforge",
+  "version": "2.1.0",
+  "description": "Deobfuscator for Roblox Luau scripts: Luraph (v10-v15) devirtualization, KeyForge delivery chains, and detection + payload recovery for 14 obfuscator families (MoonSec, Prometheus, IronBrew, wYnFuscate, ...)",
   "main": "deob.js",
   "bin": {
     "deob": "./deob.js"
   },
   "scripts": {
     "start": "node deob.js",
-    "test": "node deob.js samples/001_vm_like_dispatch-obfuscated.lua"
+    "test": "node test/run_tests.js --quick",
+    "test:full": "node test/run_tests.js",
+    "fixtures": "node test/make_fixtures.js"
   },
-  "keywords": ["luraph", "deobfuscator", "roblox", "luau"],
+  "keywords": [
+    "luraph",
+    "keyforge",
+    "keyforge.win",
+    "deobfuscator",
+    "deobfuscate",
+    "devirtualize",
+    "roblox",
+    "luau",
+    "lua",
+    "obfuscator",
+    "script-protection"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "type": "commonjs"
 }
